@@ -1,0 +1,1 @@
+In the event of errors, we assume no liability, use at your own risk
