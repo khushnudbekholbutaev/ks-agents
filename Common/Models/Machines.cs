@@ -1,5 +1,6 @@
 ﻿using Common.Helpers;
-using Common.Interfaces; // ILogger uchun
+using Common.Interfaces;
+using Microsoft.Win32;
 using Newtonsoft.Json;
 using SQLite;
 using System;
@@ -14,66 +15,52 @@ namespace Common.Models
         public int Id { get; set; }
 
         public string PCName { get; set; } = Environment.MachineName;
-        public string MachineId { get; set; }
+        public string MachineId { get; set; } = Guid.NewGuid().ToString();
 
         private readonly ILogger logger;
 
         public Machines(ILogger logger = null)
         {
-            this.logger = logger;
-
-            try
-            {
-                MachineId = GetMachineId();
-                logger.LogInformation($"Machine initialized. PCName: {PCName}, MachineId: {MachineId}");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Failed to initialize machine info: {ex.Message}");
-                MachineId = Guid.NewGuid().ToString();
-            }
-
-            var machine = new Machines
-            {
-                PCName = this.PCName,
-                MachineId = this.MachineId
-            };
-
-            DBContexts.Insert( machine );
-            logger.LogInformation("Machine info inserted into database.");
+            this.logger = logger ?? new Logger();
         }
 
-        private string GetMachineId()
-        {
-            string id = "";
-            try
-            {
-                logger.LogInformation("Attempting to get ProcessorId via WMI...");
-                using (var mos = new ManagementObjectSearcher("SELECT ProcessorId FROM Win32_Processor"))
-                {
-                    foreach (ManagementObject mo in mos.Get())
-                    {
-                        id = mo["ProcessorId"]?.ToString() ?? "";
-                        break;
-                    }
-                }
+        //    try
+        //    {
+        //        PCName = Environment.MachineName;
 
-                if (string.IsNullOrEmpty(id))
-                {
-                    logger.LogInformation("ProcessorId not found, generating new GUID.");
-                    id = Guid.NewGuid().ToString();
-                }
+        //        if (string.IsNullOrEmpty(MachineId))
+        //        {
+        //            logger.LogInformation("MachineGuid not found, generating new GUID.");
+        //            MachineId = Guid.NewGuid().ToString();
+        //        }
 
-                return id;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Error retrieving ProcessorId: {ex.Message}");
-                return Guid.NewGuid().ToString();
-            }
-        }
+        //        DBContexts.Insert(this);
+        //        logger.LogInformation($"Machine info inserted into database: {PCName}, {MachineId}");
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        logger.LogError($"Failed to initialize machine info: {ex.Message}");
+        //        MachineId = Guid.NewGuid().ToString();
+        //    }
+        //}
 
-        public UploadQueue ToUploadQueue()
+        //private string GetMachineId()
+        //{
+        //    try
+        //    {
+        //        string machineGuid = Guid.NewGuid().ToString();
+
+        //        logger.LogInformation("MachineGuid not found, generating new GUID.");
+        //        return machineGuid;
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        logger.LogError($"Error retrieving MachineGuid: {ex.Message}");
+        //        return Guid.NewGuid().ToString();
+        //    }
+        //}
+
+        public UploadQueue UploadQueue()
         {
             try
             {
@@ -95,3 +82,14 @@ namespace Common.Models
         }
     }
 }
+//Registry.GetValue(
+//                    @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Cryptography",
+//                    "MachineGuid",
+//                    null
+//                )?.ToString();
+
+//if (!string.IsNullOrEmpty(machineGuid))
+//{
+//    logger.LogInformation($"Machine ID (MachineGuid) found: {machineGuid}");
+//    return machineGuid;
+//}

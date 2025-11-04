@@ -8,8 +8,8 @@ namespace KeyLogger.Interfaces
 {
     public interface IKeyLoggerEngine
     {
-        void EnqueueKey(IntPtr lParam);
-        void CommitSession();
-        void Shutdown();
+        Task EnqueueKeyAsync(IntPtr lParam);
+        Task CommitSessionAsync();
+        Task ShutdownAsync();
     }
 }

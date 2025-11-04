@@ -4,6 +4,7 @@ using Common.Interfaces;
 using Common.Models;
 using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,8 +18,8 @@ public class RegistrationAndReceiver : BackgroundService
     private readonly HttpClient _httpClient;
     private readonly ILogger logger;
 
-    private readonly string registerUrl = "https://example13/api/register";
-    private readonly string configUrl = "https://example.common/api/config";
+    private readonly string registerUrl = "https://a4a7ef76-0092-46fe-9e67-13e8ba4fbbe0.mock.pstmn.ion";
+    private readonly string configUrl = "https://offish-charley-preachiest.ngrok-free.dev/api/get";
 
     public Dictionary<string, string> ConfigKeys { get; private set; } = new Dictionary<string, string>();
 
@@ -29,7 +30,7 @@ public class RegistrationAndReceiver : BackgroundService
         _httpClient = httpClient;
         this.logger = logger ?? new Logger();
 
-        _machine = new Machines(this.logger);
+        _machine = new Machines();
     }
 
     public override async Task StartAsync(CancellationToken cancellationToken)
@@ -47,18 +48,32 @@ public class RegistrationAndReceiver : BackgroundService
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync();
-                var result = JsonConvert.DeserializeObject<Dictionary<string, string>>(content);
 
-                ConfigKeys = result ?? new Dictionary<string, string>();
+                var json = JObject.Parse(content);
 
-                foreach (var kv in ConfigKeys)
+                var configs = json["data"].ToObject<Dictionary<string, object>>();
+
+                if (configs != null)
                 {
-                    var config = new Configurations { Name = kv.Key, Value = kv.Value };
-                    DBContexts.InsertOrUpdateConfig(config);
-                }
+                    ConfigKeys = configs.ToDictionary(k => k.Key, v => v.Value?.ToString() ?? "");
 
-                ConfigurationApplier.Apply(ConfigKeys, logger);
-                logger.LogInformation("Agent registered successfully and configurations applied.");
+                    foreach (var kv in ConfigKeys)
+                    {
+                        var config = new Configurations
+                        {
+                            Name = kv.Key,
+                            Value = kv.Value
+                        };
+                        DBContexts.InsertOrUpdateConfig(config);
+                    }
+
+                    ConfigurationApplier.Apply(ConfigKeys, logger);
+                    logger.LogInformation("Agent registered successfully and configuration applied.");
+                }
+                else
+                {
+                    logger.LogInformation("No configuration found in server response.");
+                }
             }
             else
             {
@@ -110,22 +125,25 @@ public class RegistrationAndReceiver : BackgroundService
             response.EnsureSuccessStatusCode();
 
             var jsonContent = await response.Content.ReadAsStringAsync();
-            var configList = JsonConvert.DeserializeObject<List<Configurations>>(jsonContent);
+            var json = JObject.Parse(jsonContent);
 
-            if (configList != null && configList.Count > 0)
+            var configs = json["data"]?["configs"]?.ToObject<Dictionary<string, object>>();
+
+            if (configs != null && configs.Count > 0)
             {
-                configDict = configList.ToDictionary(c => c.Name, c => c.Value);
+                configDict = configs.ToDictionary(k => k.Key, v => v.Value?.ToString() ?? "");
+
                 foreach (var kv in configDict)
                 {
                     var config = new Configurations { Name = kv.Key, Value = kv.Value };
                     DBContexts.InsertOrUpdateConfig(config);
                 }
 
-                logger.LogInformation("Configurations updated in DB from HTTP GET.");
+                logger.LogInformation("Configurations updated in DB from backend GET.");
             }
             else
             {
-                logger.LogInformation("Configuration JSON is empty from backend GET.");
+                logger.LogInformation("No configuration data found in backend GET response.");
             }
         }
         catch (Exception ex)
@@ -135,4 +153,5 @@ public class RegistrationAndReceiver : BackgroundService
 
         return configDict;
     }
+
 }

@@ -3,54 +3,52 @@ using Common.Helpers;
 using Common.Interfaces;
 using Screenshot.Interfaces;
 using System;
-using System.Timers;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Screenshot.Services
 {
-    public class CaptureWithInterval : ICaptureWithInterval
+    public class CaptureWithInterval : ICaptureWithInterval, IDisposable
     {
-        private readonly ITakeScreenshot screenshot;
+        private readonly ITakeScreenshotAsync screenshot;
         private readonly int interval;
         private readonly bool onChangedWindow;
-        private readonly Timer timer;
-        private DateTime lastWindowChange = DateTime.Now;
         private readonly ILogger logger;
+        private Timer timer;
+        private DateTime lastWindowChange = DateTime.Now;
 
-        public CaptureWithInterval(ITakeScreenshot screenshot, ILogger logger = null)
+        public CaptureWithInterval(ITakeScreenshotAsync screenshot, ILogger logger = null)
         {
             this.screenshot = screenshot;
             this.logger = logger ?? new Logger();
 
             interval = ConfigurationManager.CurrentConfig.ScrConfig.ScreenshotInterval;
             onChangedWindow = ConfigurationManager.CurrentConfig.ScrConfig.OnChangedWindow;
-
-            timer = new Timer(interval * 1000);
-            timer.Elapsed += TimerElapsed;
         }
 
-        public void Capture()
+        public async Task CaptureAsync()
         {
             try
             {
                 if (onChangedWindow)
                 {
                     WindowChangeWatcher watcher = new WindowChangeWatcher();
-                    watcher.OnWindowChange += (s, e) =>
+                    watcher.OnWindowChange += async (s, e) =>
                     {
-                        screenshot.TakeScreenshot();
+                        await TakeScreenshotSafeAsync("window change");
                         lastWindowChange = DateTime.Now;
-                        logger.LogInformation("Screenshot taken due to window change.");
                     };
                     watcher.Start();
+                }
 
-                    timer.Start();
-                    logger.LogInformation("CaptureWithInterval started with window change monitoring.");
-                }
-                else
+                timer = new Timer(async _ =>
                 {
-                    timer.Start();
-                    logger.LogInformation("CaptureWithInterval started with periodic screenshots only.");
-                }
+                    await TimerElapsedAsync();
+                }, null, 0, interval * 1000);
+
+                logger.LogInformation("CaptureWithInterval started.");
+
+                await Task.CompletedTask;
             }
             catch (Exception ex)
             {
@@ -58,29 +56,49 @@ namespace Screenshot.Services
             }
         }
 
-        private void TimerElapsed(object sender, ElapsedEventArgs e)
+        private async Task TimerElapsedAsync()
         {
             try
             {
                 if (onChangedWindow)
                 {
-                    if ((DateTime.Now - lastWindowChange).TotalMilliseconds >= interval)
+                    if ((DateTime.Now - lastWindowChange).TotalMilliseconds >= interval * 1000)
                     {
-                        screenshot.TakeScreenshot();
+                        await TakeScreenshotSafeAsync("interval timeout");
                         lastWindowChange = DateTime.Now;
-                        logger.LogInformation("Screenshot taken due to interval timeout.");
                     }
                 }
                 else
                 {
-                    screenshot.TakeScreenshot();
-                    logger.LogInformation("Screenshot taken due to interval timeout.");
+                    await TakeScreenshotSafeAsync("interval timeout");
                 }
             }
             catch (Exception ex)
             {
-                logger.LogError($"Error during TimerElapsed in CaptureWithInterval: {ex.Message}");
+                logger.LogError($"Error during TimerElapsedAsync: {ex.Message}");
             }
+        }
+
+        private async Task TakeScreenshotSafeAsync(string reason)
+        {
+            try
+            {
+                if (screenshot is ITakeScreenshotAsync asyncScreenshot)
+                    await asyncScreenshot.TakeScreenshotAsync();
+                else
+                    await screenshot.TakeScreenshotAsync();
+
+                logger.LogInformation($"Screenshot taken due to {reason}.");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Error taking screenshot ({reason}): {ex.Message}");
+            }
+        }
+
+        public void Dispose()
+        {
+            timer?.Dispose();
         }
     }
 }

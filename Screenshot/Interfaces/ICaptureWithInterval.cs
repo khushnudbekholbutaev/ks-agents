@@ -8,6 +8,6 @@ namespace Screenshot.Interfaces
 {
     public interface ICaptureWithInterval
     {
-        void Capture();
+        Task CaptureAsync();
     }
 }

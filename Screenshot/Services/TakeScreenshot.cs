@@ -5,17 +5,16 @@ using Common.Models;
 using Newtonsoft.Json;
 using Screenshot.Interfaces;
 using System;
-using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Runtime.InteropServices;
-using System.Text;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace Screenshot.Services
 {
-    public class TakeScreenshot : ITakeScreenshot
+
+    public class TakeScreenshot : ITakeScreenshotAsync
     {
         private readonly int jpegQuality = ConfigurationManager.CurrentConfig.ScrConfig.JpegQuality;
         private readonly string screenshotFolder = ConfigurationManager.CurrentConfig.ScrConfig.ScreenshotPath;
@@ -26,7 +25,7 @@ namespace Screenshot.Services
             this.logger = logger ?? new Logger();
         }
 
-        void ITakeScreenshot.TakeScreenshot()
+        public async Task TakeScreenshotAsync()
         {
             try
             {
@@ -46,18 +45,21 @@ namespace Screenshot.Services
                         g.CopyFromScreen(0, 0, 0, 0, bmp.Size);
                     }
 
-                    ImageCodecInfo jpegCodec = GetEncoderInfo("image/jpeg");
-                    if (jpegCodec == null)
+                    await Task.Run(() =>
                     {
-                        logger.LogError("JPEG codec not found, screenshot not saved.");
-                        return;
-                    }
+                        ImageCodecInfo jpegCodec = GetEncoderInfo("image/jpeg");
+                        if (jpegCodec == null)
+                        {
+                            logger.LogError("JPEG codec not found, screenshot not saved.");
+                            return;
+                        }
 
-                    EncoderParameters encoderParameters = new EncoderParameters(1);
-                    encoderParameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, jpegQuality);
+                        EncoderParameters encoderParameters = new EncoderParameters(1);
+                        encoderParameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, jpegQuality);
 
-                    bmp.Save(filePath, jpegCodec, encoderParameters);
-                    logger.LogInformation($"Screenshot saved: {filePath}");
+                        bmp.Save(filePath, jpegCodec, encoderParameters);
+                        logger.LogInformation($"Screenshot saved: {filePath}");
+                    });
                 }
 
                 var helper = new ForegroundWindowHelper();
@@ -73,8 +75,7 @@ namespace Screenshot.Services
                     ActiveProcessName = activeProcessName
                 };
 
-                DBContexts.Insert(screenshot);
-                logger.LogInformation($"Screenshot inserted into DB: {filePath}");
+                await Task.Run(() => DBContexts.Insert(screenshot));
                 logger.LogInformation($"Screenshot inserted into DB: {filePath}");
 
                 var uploadScr = new UploadQueue
@@ -84,7 +85,7 @@ namespace Screenshot.Services
                     IsSent = false
                 };
 
-                DBContexts.Insert(uploadScr);
+                await Task.Run(() => DBContexts.Insert(uploadScr));
                 logger.LogInformation($"Screenshot added to UploadQueue: {filePath}");
             }
             catch (Exception ex)
