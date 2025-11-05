@@ -2,6 +2,7 @@
 using Common.Helpers;
 using Common.Interfaces;
 using Common.Models;
+using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -10,16 +11,17 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 
 namespace ks.EngineServices
 {
-    public class UploaderService
+    public class UploaderService : BackgroundService
     {
-        private readonly Timer _timer;
         private readonly string _uploadUrl;
         private readonly string _authToken;
+        private readonly int _senderInterval;
         private readonly ILogger logger;
 
         public UploaderService(ILogger logger = null)
@@ -27,17 +29,33 @@ namespace ks.EngineServices
             this.logger = logger ?? new Logger();
 
             var cfg = ConfigurationManager.CurrentConfig.UpConfig;
+            //???
             _uploadUrl = "https://offish-charley-preachiest.ngrok-free.dev/api/create";
             _authToken = cfg.AuthToken;
+            _senderInterval = cfg.SenderInterval;
 
             logger.LogInformation($" UploadUrl={_uploadUrl}, Interval={cfg.SenderInterval} minutes, {_authToken} token");
+        }
+        //?????
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            logger.LogInformation("UploaderService started.");
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                try
+                {
+                    await UploadBatchAsync();
+                }
+                catch(Exception ex)
+                {
+                    logger.LogError($"Error in ExecuteAsync: {ex.Message}");
+                }
 
-            _timer = new Timer(cfg.SenderInterval * 60 * 1000);
-            _timer.Elapsed += async (s, e) => await UploadBatchAsync();
-            _timer.AutoReset = true;
-            _timer.Start();
+                logger.LogInformation($"UploaderService sleeping for {_senderInterval} minutes...");
+                await Task.Delay(TimeSpan.FromMinutes(_senderInterval), stoppingToken);
+            }
 
-            this.logger.LogInformation("UploaderService started. Timer running.");
+            logger.LogInformation("UploaderService stopping...");
         }
 
         private async Task UploadBatchAsync()

@@ -56,13 +56,14 @@ namespace ks
 
                 // ------------------ Uploader Service ------------------
                 UploaderService uploader = new UploaderService(logger);
-                uploader.FlushQueue();
+                await uploader.StartAsync(default);
                 logger.LogInformation("Uploader service initialized.");
 
                 logger.LogInformation("Agent is running....");
                 Application.Run();
 
-                // Background service task stop
+                // Background services task stop
+                uploader.FlushQueue();
                 await regAndReceiver.StopAsync(default);
             }
             catch (Exception ex)

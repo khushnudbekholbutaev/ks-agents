@@ -33,7 +33,7 @@ namespace Common.ConfigurationManager
     public class UploadConf
     {
         public string UploadUrl { get; set; } = string.Empty;
-        public int SenderInterval { get; set; } = 300;
+        public int SenderInterval { get; set; } = 1;
         public string AuthToken { get; set; } = string.Empty;
     }
 }
