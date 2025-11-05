@@ -18,7 +18,7 @@ public class RegistrationAndReceiver : BackgroundService
     private readonly HttpClient _httpClient;
     private readonly ILogger logger;
 
-    private readonly string registerUrl = "https://a4a7ef76-0092-46fe-9e67-13e8ba4fbbe0.mock.pstmn.ion";
+    private readonly string registerUrl = "https://offish-charley-preachiest.ngrok-free.dev/api/login";
     private readonly string configUrl = "https://offish-charley-preachiest.ngrok-free.dev/api/get";
 
     public Dictionary<string, string> ConfigKeys { get; private set; } = new Dictionary<string, string>();
@@ -67,7 +67,7 @@ public class RegistrationAndReceiver : BackgroundService
                         DBContexts.InsertOrUpdateConfig(config);
                     }
 
-                    ConfigurationApplier.Apply(ConfigKeys, logger);
+                    ConfigurationApplier.Apply(ConfigKeys);
                     logger.LogInformation("Agent registered successfully and configuration applied.");
                 }
                 else

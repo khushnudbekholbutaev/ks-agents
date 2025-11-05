@@ -27,8 +27,10 @@ namespace ks.EngineServices
             this.logger = logger ?? new Logger();
 
             var cfg = ConfigurationManager.CurrentConfig.UpConfig;
-            _uploadUrl = cfg.UploadUrl;
+            _uploadUrl = "https://offish-charley-preachiest.ngrok-free.dev/api/create";
             _authToken = cfg.AuthToken;
+
+            logger.LogInformation($" UploadUrl={_uploadUrl}, Interval={cfg.SenderInterval} minutes, {_authToken} token");
 
             _timer = new Timer(cfg.SenderInterval * 60 * 1000);
             _timer.Elapsed += async (s, e) => await UploadBatchAsync();
@@ -79,26 +81,32 @@ namespace ks.EngineServices
                 using (var client = new HttpClient())
                 {
                     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _authToken);
-                    var json = JsonConvert.SerializeObject(batch.Select(x => new { x.PayloadType, x.PayloadJson }));
-                    var content = new StringContent(json, Encoding.UTF8, "agent701/json");
 
-                    var response = await client.PostAsync(_uploadUrl, content);
-                    if (response.IsSuccessStatusCode)
+                    foreach (var group in batch.GroupBy(x => x.PayloadType))
                     {
-                        logger.LogInformation("Batch uploaded successfully. Updating local DB...");
+                        string type = group.Key;
+                        var payloadArray = group.Select(x => JsonConvert.DeserializeObject(x.PayloadJson)).ToList();
 
-                        using (var cmd = connection.CreateCommand())
+                        string jsonBody = JsonConvert.SerializeObject(payloadArray);
+
+                        string urlWithParam = $"{_uploadUrl}?type={Uri.EscapeDataString(type)}";
+
+                        var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+
+                        var response = await client.PostAsync(urlWithParam, content);
+                        if (response.IsSuccessStatusCode)
                         {
-                            cmd.CommandText = "UPDATE UploadQueue SET IsSent = 1 WHERE Id IN (" +
-                                              string.Join(",", batch.Select(x => x.Id)) + ")";
-                            cmd.ExecuteNonQuery();
+                            using (var cmdUpdate = connection.CreateCommand())
+                            {
+                                cmdUpdate.CommandText = "UPDATE UploadQueue SET IsSent = 1 WHERE Id IN (" +
+                                    string.Join(",", group.Select(x => x.Id)) + ")";
+                                cmdUpdate.ExecuteNonQuery();
+                            }
                         }
-
-                        logger.LogInformation("Local DB updated. Batch marked as sent.");
-                    }
-                    else
-                    {
-                        logger.LogError($"Failed to upload batch. StatusCode: {response.StatusCode}");
+                        else
+                        {
+                            logger.LogError($"Failed to upload batch with PayloadType={type}. StatusCode={response.StatusCode}");
+                        }
                     }
                 }
             }

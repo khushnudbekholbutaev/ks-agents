@@ -56,6 +56,7 @@ namespace ks
 
                 // ------------------ Uploader Service ------------------
                 UploaderService uploader = new UploaderService(logger);
+                uploader.FlushQueue();
                 logger.LogInformation("Uploader service initialized.");
 
                 logger.LogInformation("Agent is running....");
