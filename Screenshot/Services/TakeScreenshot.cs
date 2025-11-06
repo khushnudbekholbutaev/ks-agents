@@ -55,7 +55,7 @@ namespace Screenshot.Services
                         }
 
                         EncoderParameters encoderParameters = new EncoderParameters(1);
-                        encoderParameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, jpegQuality);
+                        encoderParameters.Param[0] = new EncoderParameter(Encoder.Quality, jpegQuality);
 
                         bmp.Save(filePath, jpegCodec, encoderParameters);
                         logger.LogInformation($"Screenshot saved: {filePath}");

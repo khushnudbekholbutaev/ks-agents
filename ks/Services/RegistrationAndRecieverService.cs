@@ -30,6 +30,8 @@ public class RegistrationAndReceiver : BackgroundService
         _httpClient = httpClient;
         this.logger = logger ?? new Logger();
 
+
+
         _machine = new Machines();
     }
 

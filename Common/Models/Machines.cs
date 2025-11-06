@@ -23,7 +23,7 @@ namespace Common.Models
         {
             this.logger = logger ?? new Logger();
         }
-
+        //???
         //    try
         //    {
         //        PCName = Environment.MachineName;

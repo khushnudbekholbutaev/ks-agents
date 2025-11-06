@@ -72,7 +72,7 @@ namespace ks.EngineServices
                 List<UploadQueue> batch = new List<UploadQueue>();
                 using (var cmd = connection.CreateCommand())
                 {
-                    cmd.CommandText = "SELECT * FROM UploadQueue WHERE IsSent = 0 LIMIT 50";
+                    cmd.CommandText = "SELECT * FROM UploadQueue WHERE IsSent = 0";
                     using (var reader = cmd.ExecuteReader())
                     {
                         while (reader.Read())
@@ -103,27 +103,85 @@ namespace ks.EngineServices
                     foreach (var group in batch.GroupBy(x => x.PayloadType))
                     {
                         string type = group.Key;
-                        var payloadArray = group.Select(x => JsonConvert.DeserializeObject(x.PayloadJson)).ToList();
 
-                        string jsonBody = JsonConvert.SerializeObject(payloadArray);
-
-                        string urlWithParam = $"{_uploadUrl}?type={Uri.EscapeDataString(type)}";
-
-                        var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
-
-                        var response = await client.PostAsync(urlWithParam, content);
-                        if (response.IsSuccessStatusCode)
+                        if (type.Equals("screenshot", StringComparison.OrdinalIgnoreCase))
                         {
-                            using (var cmdUpdate = connection.CreateCommand())
+                            logger.LogInformation("Uploading screenshot batch...");
+
+                            foreach (var item in group)
                             {
-                                cmdUpdate.CommandText = "UPDATE UploadQueue SET IsSent = 1 WHERE Id IN (" +
-                                    string.Join(",", group.Select(x => x.Id)) + ")";
-                                cmdUpdate.ExecuteNonQuery();
+                                dynamic payload = JsonConvert.DeserializeObject(item.PayloadJson);
+                                string filePath = payload.FilePath;
+
+                                logger.LogInformation($"took from payload {filePath}");
+
+                                if (string.IsNullOrEmpty(filePath))
+                                {
+                                    logger.LogError($"Screenshot payload missing filePath: {item.PayloadJson}");
+                                    continue;
+                                }
+
+                                if (!File.Exists(filePath))
+                                {
+                                    logger.LogError($"Screenshot file not found: {filePath}");
+                                    continue;
+                                }
+
+                                using (var form = new MultipartFormDataContent())
+                                {
+                                    var fileStream = File.OpenRead(filePath);
+                                    var fileContent = new StreamContent(fileStream);
+                                    fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
+
+                                    form.Add(fileContent, "image", Path.GetFileName(filePath));
+
+                                    var jsonPayl = JsonConvert.SerializeObject(payload);
+                                    form.Add(new StringContent(jsonPayl, Encoding.UTF8, "application/json"), "payload");
+
+                                    var urlParam = $"{_uploadUrl}?type={Uri.EscapeDataString(type)}";
+                                    var res = await client.PostAsync(urlParam, form);
+
+                                    if (res.IsSuccessStatusCode)
+                                    {
+                                        using (var cmdUpdate = connection.CreateCommand())
+                                        {
+                                            cmdUpdate.CommandText = $"UPDATE UploadQueue SET IsSent = 1 WHERE Id = {item.Id}";
+                                            cmdUpdate.ExecuteNonQuery();
+                                        }
+
+                                        logger.LogInformation($"Uploaded screenshot: {Path.GetFileName(filePath)}");
+                                    }
+                                    else
+                                    {
+                                        logger.LogError($"Failed to upload screenshot: {Path.GetFileName(filePath)} | StatusCode={res.StatusCode}");
+                                    }
+                                }
                             }
                         }
                         else
                         {
-                            logger.LogError($"Failed to upload batch with PayloadType={type}. StatusCode={response.StatusCode}");
+                            var payloadArray = group.Select(x => JsonConvert.DeserializeObject(x.PayloadJson)).ToList();
+
+                            string jsonBody = JsonConvert.SerializeObject(payloadArray);
+
+                            string urlWithParam = $"{_uploadUrl}?type={Uri.EscapeDataString(type)}";
+
+                            var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+
+                            var response = await client.PostAsync(urlWithParam, content);
+                            if (response.IsSuccessStatusCode)
+                            {
+                                using (var cmdUpdate = connection.CreateCommand())
+                                {
+                                    cmdUpdate.CommandText = "UPDATE UploadQueue SET IsSent = 1 WHERE Id IN (" +
+                                        string.Join(",", group.Select(x => x.Id)) + ")";
+                                    cmdUpdate.ExecuteNonQuery();
+                                }
+                            }
+                            else
+                            {
+                                logger.LogError($"Failed to upload batch with PayloadType={type}. StatusCode={response.StatusCode}");
+                            }
                         }
                     }
                 }
