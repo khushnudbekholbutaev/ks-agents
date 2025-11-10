@@ -18,8 +18,8 @@ public class RegistrationAndReceiver : BackgroundService
     private readonly HttpClient _httpClient;
     private readonly ILogger logger;
 
-    private readonly string registerUrl = "https://offish-charley-preachiest.ngrok-free.dev/api/login";
-    private readonly string configUrl = "https://offish-charley-preachiest.ngrok-free.dev/api/get";
+    private readonly string registerUrl = "http://192.168.100.138:8080/api/login";
+    private readonly string configUrl = "http://192.168.100.138:8080/api/get";
 
     public Dictionary<string, string> ConfigKeys { get; private set; } = new Dictionary<string, string>();
 

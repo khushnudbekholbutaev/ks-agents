@@ -30,7 +30,7 @@ namespace ks.EngineServices
 
             var cfg = ConfigurationManager.CurrentConfig.UpConfig;
             //???
-            _uploadUrl = "https://offish-charley-preachiest.ngrok-free.dev/api/create";
+            _uploadUrl = "http://192.168.100.138:8080/api/create";
             _authToken = cfg.AuthToken;
             _senderInterval = cfg.SenderInterval;
 
